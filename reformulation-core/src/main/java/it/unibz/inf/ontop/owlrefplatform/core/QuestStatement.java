@@ -9,9 +9,9 @@ package it.unibz.inf.ontop.owlrefplatform.core;
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -31,37 +31,34 @@ import java.util.concurrent.CountDownLatch;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
+import it.unibz.inf.ontop.model.*;
 import it.unibz.inf.ontop.model.impl.OBDADataFactoryImpl;
 import it.unibz.inf.ontop.model.impl.OBDAVocabulary;
-import it.unibz.inf.ontop.owlrefplatform.core.basicoperations.DatalogNormalizer;
+import it.unibz.inf.ontop.ontology.Assertion;
 import it.unibz.inf.ontop.owlrefplatform.core.basicoperations.FunctionFlattener;
 import it.unibz.inf.ontop.owlrefplatform.core.basicoperations.PullOutEqualityNormalizer;
 import it.unibz.inf.ontop.owlrefplatform.core.basicoperations.PullOutEqualityNormalizerImpl;
-import it.unibz.inf.ontop.owlrefplatform.core.resultset.*;
-import it.unibz.inf.ontop.owlrefplatform.core.translator.IntermediateQueryToDatalogTranslator;
-import it.unibz.inf.ontop.pivotalrepr.EmptyQueryException;
-import it.unibz.inf.ontop.pivotalrepr.IntermediateQuery;
-import it.unibz.inf.ontop.pivotalrepr.datalog.DatalogProgram2QueryConverter;
-import org.openrdf.query.MalformedQueryException;
-import org.openrdf.query.QueryLanguage;
-import org.openrdf.query.parser.ParsedQuery;
-import org.openrdf.query.parser.QueryParser;
-import org.openrdf.query.parser.QueryParserUtil;
-import it.unibz.inf.ontop.ontology.Assertion;
-import it.unibz.inf.ontop.owlrefplatform.core.abox.EquivalentTriplePredicateIterator;
 import it.unibz.inf.ontop.owlrefplatform.core.optimization.BasicJoinOptimizer;
 import it.unibz.inf.ontop.owlrefplatform.core.queryevaluation.SPARQLQueryUtility;
 import it.unibz.inf.ontop.owlrefplatform.core.srcquerygeneration.SQLQueryGenerator;
 import it.unibz.inf.ontop.owlrefplatform.core.translator.DatalogToSparqlTranslator;
+import it.unibz.inf.ontop.owlrefplatform.core.translator.IntermediateQueryToDatalogTranslator;
 import it.unibz.inf.ontop.owlrefplatform.core.translator.SesameConstructTemplate;
 import it.unibz.inf.ontop.owlrefplatform.core.translator.SparqlAlgebraToDatalogTranslator;
 import it.unibz.inf.ontop.owlrefplatform.core.unfolding.DatalogUnfolder;
 import it.unibz.inf.ontop.owlrefplatform.core.unfolding.ExpressionEvaluator;
 import it.unibz.inf.ontop.owlrefplatform.core.unfolding.TypeLift;
+import it.unibz.inf.ontop.pivotalrepr.EmptyQueryException;
+import it.unibz.inf.ontop.pivotalrepr.IntermediateQuery;
+import it.unibz.inf.ontop.pivotalrepr.datalog.DatalogProgram2QueryConverter;
 import it.unibz.inf.ontop.renderer.DatalogProgramRenderer;
+import org.openrdf.query.MalformedQueryException;
+import org.openrdf.query.QueryLanguage;
+import org.openrdf.query.parser.ParsedQuery;
+import org.openrdf.query.parser.QueryParser;
+import org.openrdf.query.parser.QueryParserUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import it.unibz.inf.ontop.model.*;
 
 
 /**
@@ -70,20 +67,20 @@ import it.unibz.inf.ontop.model.*;
  */
 public class QuestStatement implements OBDAStatement {
 
-    private static final boolean ALLOW_QUERY_CACHING = true;
+	private static final boolean ALLOW_QUERY_CACHING = true;
 
-    public final Quest questInstance;
+	public final Quest questInstance;
 
 	private final QuestConnection conn;
 
 	private final Statement sqlstatement;
-    private final SQLQueryGenerator querygenerator;
+	private final SQLQueryGenerator querygenerator;
 
 
-    private boolean canceled = false;
+	private boolean canceled = false;
 
 	private boolean queryIsParsed = false;
-	
+
 	private ParsedQuery parsedQ = null;
 
 	private QueryExecutionThread executionthread;
@@ -94,13 +91,13 @@ public class QuestStatement implements OBDAStatement {
 
 	private SesameConstructTemplate templ;
 
-    private static OBDADataFactory ofac = OBDADataFactoryImpl.getInstance();
+	private static OBDADataFactory ofac = OBDADataFactoryImpl.getInstance();
 
-	
+
 	private static final Logger log = LoggerFactory.getLogger(QuestStatement.class);
 
-    private Multimap<Predicate,Integer> multiTypedFunctionSymbolIndex = ArrayListMultimap.create();
-	
+	private Multimap<Predicate,Integer> multiTypedFunctionSymbolIndex = ArrayListMultimap.create();
+
 	/*
 	 * For benchmark purpose
 	 */
@@ -146,18 +143,18 @@ public class QuestStatement implements OBDAStatement {
 		// TODO: replace the magic number by an enum
 		public void setQueryType(int type) {
 			switch (type) {// encoding of query type to from numbers
-			case 1:
-				this.isSelect = true;
-				break;
-			case 2:
-				this.isBoolean = true;
-				break;
-			case 3:
-				this.isConstruct = true;
-				break;
-			case 4:
-				this.isDescribe = true;
-				break;
+				case 1:
+					this.isSelect = true;
+					break;
+				case 2:
+					this.isBoolean = true;
+					break;
+				case 3:
+					this.isConstruct = true;
+					break;
+				case 4:
+					this.isDescribe = true;
+					break;
 			}
 		}
 
@@ -196,9 +193,9 @@ public class QuestStatement implements OBDAStatement {
 				if (!questInstance.hasCachedSQL(strquery)) {
 					getUnfolding(strquery);
 				}
-				
+
 				// Obtaining the query from the cache
-				 
+
 				String sql = questInstance.getCachedSQL(strquery);
 				List<String> signature = questInstance.getSignatureCache().get(strquery);
 				//ParsedQuery query = sesameQueryCache.get(strquery);
@@ -206,10 +203,10 @@ public class QuestStatement implements OBDAStatement {
 				log.debug("Executing the SQL query and get the result...");
 				if (sql.equals("") && !isBoolean) {
 					tupleResult = new EmptyQueryResultSet(signature, QuestStatement.this);
-				} 
+				}
 				else if (sql.equals("")) {
 					tupleResult = new BooleanOWLOBDARefResultSet(false, QuestStatement.this);
-				} 
+				}
 				else {
 					try {
 //                        FOR debugging H2 in-memory database
@@ -291,7 +288,7 @@ public class QuestStatement implements OBDAStatement {
 			pq = qp.parseQuery(strquery, null);
 		} catch (MalformedQueryException e1) {
 			e1.printStackTrace();
-		} 
+		}
 		// encoding ofquery type into numbers
 		if (SPARQLQueryUtility.isSelectQuery(pq)) {
 			parsedQ = pq;
@@ -305,26 +302,26 @@ public class QuestStatement implements OBDAStatement {
 			TupleResultSet executedQuery = executeTupleQuery(strquery, 2);
 			return executedQuery;
 		} else if (SPARQLQueryUtility.isConstructQuery(pq)) {
-			
+
 			// Here we need to get the template for the CONSTRUCT query results
 			try {
 				templ = new SesameConstructTemplate(strquery);
 			} catch (MalformedQueryException e) {
 				e.printStackTrace();
 			}
-			
+
 			// Here we replace CONSTRUCT query with SELECT query
 			strquery = SPARQLQueryUtility.getSelectFromConstruct(strquery);
 			GraphResultSet executedGraphQuery = executeGraphQuery(strquery, 3);
 			return executedGraphQuery;
-			
+
 		} else if (SPARQLQueryUtility.isDescribeQuery(pq)) {
 			// create list of uriconstants we want to describe
 			List<String> constants = new ArrayList<String>();
 			if (SPARQLQueryUtility.isVarDescribe(strquery)) {
 				// if describe ?var, we have to do select distinct ?var first
 				String sel = SPARQLQueryUtility.getSelectVarDescribe(strquery);
-				it.unibz.inf.ontop.model.ResultSet resultSet = (it.unibz.inf.ontop.model.ResultSet) this.executeTupleQuery(sel, 1);
+				org.semanticweb.ontop.model.ResultSet resultSet = (org.semanticweb.ontop.model.ResultSet) this.executeTupleQuery(sel, 1);
 				if (resultSet instanceof EmptyQueryResultSet)
 					return null;
 				else if (resultSet instanceof QuestResultset) {
@@ -410,7 +407,7 @@ public class QuestStatement implements OBDAStatement {
 	 * canonical one.
 	 *
 	 */
-	
+
 	private DatalogProgram translateAndPreProcess(ParsedQuery pq) {
 		DatalogProgram program = null;
 		try {
@@ -432,9 +429,9 @@ public class QuestStatement implements OBDAStatement {
 			e.printStackTrace();
 			OBDAException ex = new OBDAException(e.getMessage());
 			ex.setStackTrace(e.getStackTrace());
-		
+
 			throw e;
-			
+
 		}
 		log.debug("Replacing equivalences...");
 		program = questInstance.getVocabularyValidator().replaceEquivalences(program);
@@ -474,20 +471,20 @@ public class QuestStatement implements OBDAStatement {
 
 		ExpressionEvaluator evaluator = questInstance.getExpressionEvaluator();
 		evaluator.evaluateExpressions(unfolding);
-		
+
 		/*
 			UnionOfSqlQueries ucq = new UnionOfSqlQueries(questInstance.getUnfolder().getCQContainmentCheck());
 			for (CQIE cq : unfolding.getRules())
 				ucq.add(cq);
-			
+
 			List<CQIE> rules = new ArrayList<>(unfolding.getRules());
-			unfolding.removeRules(rules); 
-			
+			unfolding.removeRules(rules);
+
 			for (CQIE cq : ucq.asCQIE()) {
 				unfolding.appendRule(cq);
 			}
 			log.debug("CQC performed ({} rules): \n{}", unfolding.getRules().size(), unfolding);
-		 
+
 		 */
 
 		log.debug("Boolean expression evaluated: \n{}", unfolding);
@@ -512,8 +509,8 @@ public class QuestStatement implements OBDAStatement {
 				BasicJoinOptimizer joinOptimizer = new BasicJoinOptimizer();
 				intermediateQuery = joinOptimizer.optimize(intermediateQuery);
 				log.debug("New query after join optimization: \n" + intermediateQuery.toString());
-				
-				
+
+
 				unfolding = IntermediateQueryToDatalogTranslator.translate(intermediateQuery);
 
 				log.debug("New Datalog query: \n" + unfolding.toString());
@@ -521,7 +518,7 @@ public class QuestStatement implements OBDAStatement {
 				unfolding = FunctionFlattener.flattenDatalogProgram(unfolding);
 				log.debug("New flattened Datalog query: \n" + unfolding.toString());
 
-				
+
 			} catch (DatalogProgram2QueryConverter.InvalidDatalogProgramException e) {
 				throw new OBDAException(e.getLocalizedMessage());
 			}
@@ -679,16 +676,16 @@ public class QuestStatement implements OBDAStatement {
 		}
 
 		// Obtain the query signature
-		//SparqlAlgebraToDatalogTranslator translator = questInstance.getSparqlAlgebraToDatalogTranslator();		
+		//SparqlAlgebraToDatalogTranslator translator = questInstance.getSparqlAlgebraToDatalogTranslator();
 		//List<String> signatureContainer = translator.getSignature(query);
-		
-		
+
+
 		// Translate the SPARQL algebra to datalog program
 		DatalogProgram initialProgram = translateAndPreProcess(query/*, signatureContainer*/);
-		
+
 		// Perform the query rewriting
 		DatalogProgram programAfterRewriting = questInstance.getRewriting(initialProgram);
-		
+
 		// Translate the output datalog program back to SPARQL string
 		// TODO Re-enable the prefix manager using Sesame prefix manager
 //		PrefixManager prefixManager = new SparqlPrefixManager(query.getPrefixMapping());
@@ -758,7 +755,7 @@ public class QuestStatement implements OBDAStatement {
 			try {
 				// log.debug("Input query:\n{}", strquery);
 
-				for (CQIE q : program.getRules()) 
+				for (CQIE q : program.getRules())
 					DatalogNormalizer.unfoldJoinTrees(q);
 
 				log.debug("Normalized program: \n{}", program);
@@ -783,7 +780,7 @@ public class QuestStatement implements OBDAStatement {
 				sql = getSQL(programAfterUnfolding, signatureContainer);
 				// cacheQueryAndProperties(strquery, sql);
 				questInstance.cacheSQL(strquery, sql);
-			} 
+			}
 			catch (Exception e1) {
 				log.debug(e1.getMessage(), e1);
 
@@ -825,7 +822,7 @@ public class QuestStatement implements OBDAStatement {
 		}
 	}
 
-	
+
 	@Override
 	public void cancel() throws OBDAException {
 		canceled = true;
@@ -843,7 +840,7 @@ public class QuestStatement implements OBDAStatement {
 	public boolean isCanceled(){
 		return canceled;
 	}
-	
+
 	@Override
 	public int executeUpdate(String query) throws OBDAException {
 		// TODO Auto-generated method stub
@@ -1017,43 +1014,43 @@ public class QuestStatement implements OBDAStatement {
 		}
 		return counter;
 	}
-	
+
 	/***
 	 * Inserts a stream of ABox assertions into the repository.
-	 * 
+	 *
 	 * @param data
-	 * 
+	 *
 	 * @throws SQLException
 	 */
-	public int insertData(Iterator<Assertion> data,  int commit, int batch) throws SQLException {
+	public int insertData(Iterator<Assertion> data, int commit, int batch) throws SQLException {
 		int result = -1;
 
 		EquivalentTriplePredicateIterator newData = new EquivalentTriplePredicateIterator(data, questInstance.getReasoner());
 
 //		if (!useFile) {
 
-			result = questInstance.getSemanticIndexRepository().insertData(conn.getConnection(), newData, commit, batch);
+		result = questInstance.getSemanticIndexRepository().insertData(conn.getConnection(), newData, commit, batch);
 //		} else {
-			//try {
-				// File temporalFile = new File("quest-copy.tmp");
-				// FileOutputStream os = new FileOutputStream(temporalFile);
-				// ROMAN: this called DOES NOTHING
-				// result = (int) questInstance.getSemanticIndexRepository().loadWithFile(conn.conn, newData);
-				// os.close();
+		//try {
+		// File temporalFile = new File("quest-copy.tmp");
+		// FileOutputStream os = new FileOutputStream(temporalFile);
+		// ROMAN: this called DOES NOTHING
+		// result = (int) questInstance.getSemanticIndexRepository().loadWithFile(conn.conn, newData);
+		// os.close();
 
-			//} catch (IOException e) {
-			//	log.error(e.getMessage());
-			//}
+		//} catch (IOException e) {
+		//	log.error(e.getMessage());
+		//}
 //		}
 
 		try {
 			questInstance.updateSemanticIndexMappings();
-		} 
+		}
 		catch (Exception e) {
 			log.error("Error updating semantic index mappings after insert.", e);
 		}
 
 		return result;
 	}
-	
+
 }

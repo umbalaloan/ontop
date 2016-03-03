@@ -20,12 +20,8 @@ package it.unibz.inf.ontop.owlrefplatform.core.dagjgrapht;
  * #L%
  */
 
+import it.unibz.inf.ontop.ontology.*;
 
-import it.unibz.inf.ontop.ontology.ClassExpression;
-import it.unibz.inf.ontop.ontology.DataPropertyExpression;
-import it.unibz.inf.ontop.ontology.DataRangeExpression;
-import it.unibz.inf.ontop.ontology.OClass;
-import it.unibz.inf.ontop.ontology.ObjectPropertyExpression;
 
 /**
  *  This is the interface for the class TBoxReasoner where we are able to retrieve all the connection built in our DAG 
