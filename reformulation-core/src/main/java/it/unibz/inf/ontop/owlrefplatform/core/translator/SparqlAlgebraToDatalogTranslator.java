@@ -28,7 +28,7 @@ import it.unibz.inf.ontop.model.impl.OBDADataFactoryImpl;
 import it.unibz.inf.ontop.model.impl.OBDAVocabulary;
 import it.unibz.inf.ontop.model.impl.TermUtils;
 import it.unibz.inf.ontop.owlrefplatform.core.abox.SemanticIndexURIMap;
-import it.unibz.inf.ontop.owlrefplatform.core.basicoperations.UriTemplateMatcher;
+import it.unibz.inf.ontop.model.UriTemplateMatcher;
 import it.unibz.inf.ontop.parser.EncodeForURI;
 import org.openrdf.model.Literal;
 import org.openrdf.model.URI;

@@ -32,16 +32,17 @@ public class JoinExtractionUtils {
      * TODO: explain
      */
     public static Optional<ImmutableBooleanExpression> extractFoldAndOptimizeBooleanExpressions(
-            ImmutableList<JoinOrFilterNode> filterAndJoinNodes) throws InsatisfiedExpressionException {
+            ImmutableList<JoinOrFilterNode> filterAndJoinNodes, MetadataForQueryOptimization metadata)
+            throws InsatisfiedExpressionException {
 
         ImmutableList<ImmutableBooleanExpression> booleanExpressions = extractBooleanExpressions(
                 filterAndJoinNodes);
 
         Optional<ImmutableBooleanExpression> foldedExpression = foldBooleanExpressions(booleanExpressions);
         if (foldedExpression.isPresent()) {
-            ExpressionEvaluator evaluator = new ExpressionEvaluator();
+            ExpressionEvaluator evaluator = new ExpressionEvaluator(metadata.getUriTemplateMatcher());
 
-            Optional<ImmutableBooleanExpression> optionalEvaluatedExpression = evaluator.evaluateBooleanExpression(
+            Optional<ImmutableBooleanExpression> optionalEvaluatedExpression = evaluator.evaluateExpression(
                     foldedExpression.get());
             if (optionalEvaluatedExpression.isPresent()) {
                 return optionalEvaluatedExpression;

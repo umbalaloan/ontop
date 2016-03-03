@@ -38,7 +38,7 @@ public class SQLAdapterFactory {
 			case "org.h2.Driver":
 				return new H2SQLDialectAdapter();
 			case "org.hsqldb.jdbc.JDBCDriver":
-				return new HSQLSQLDialectAdapter();
+				return new HSQLDBDialectAdapter();
 			case "com.ibm.db2.jcc.DB2Driver":
 				return new DB2SQLDialectAdapter();
 			case "oracle.jdbc.driver.OracleDriver":

@@ -20,8 +20,7 @@ package it.unibz.inf.ontop.owlrefplatform.core;
  * #L%
  */
 
-import com.google.common.collect.ArrayListMultimap;
-import com.google.common.collect.Multimap;
+import it.unibz.inf.ontop.owlrefplatform.core.srcquerygeneration.SQLGenerator;
 import it.unibz.inf.ontop.sql.*;
 import it.unibz.inf.ontop.model.*;
 import it.unibz.inf.ontop.model.impl.OBDADataFactoryImpl;

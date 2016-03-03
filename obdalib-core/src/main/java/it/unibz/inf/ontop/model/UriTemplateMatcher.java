@@ -1,4 +1,4 @@
-package it.unibz.inf.ontop.owlrefplatform.core.basicoperations;
+package it.unibz.inf.ontop.model;
 
 /*
  * #%L
@@ -20,14 +20,6 @@ package it.unibz.inf.ontop.owlrefplatform.core.basicoperations;
  * #L%
  */
 
-import it.unibz.inf.ontop.model.CQIE;
-import it.unibz.inf.ontop.model.Constant;
-import it.unibz.inf.ontop.model.Function;
-import it.unibz.inf.ontop.model.OBDADataFactory;
-import it.unibz.inf.ontop.model.Term;
-import it.unibz.inf.ontop.model.URITemplatePredicate;
-import it.unibz.inf.ontop.model.ValueConstant;
-import it.unibz.inf.ontop.model.Variable;
 import it.unibz.inf.ontop.model.impl.OBDADataFactoryImpl;
 
 import java.util.ArrayList;

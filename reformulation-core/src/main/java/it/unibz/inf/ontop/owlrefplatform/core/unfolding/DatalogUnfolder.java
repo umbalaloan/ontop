@@ -241,12 +241,7 @@ public class DatalogUnfolder {
         for (CQIE query : workingSet)
             EQNormalizer.enforceEqualities(query);
 
-        //TODO: remove this noise
-        DatalogProgram dp = termFactory.getDatalogProgram();
-        QueryUtils.copyQueryModifiers(inputquery, dp);
-        dp.appendRule(workingSet);
-
-        return dp;
+        return termFactory.getDatalogProgram(inputquery.getQueryModifiers().clone(), workingSet);
     }
 
 

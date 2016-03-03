@@ -20,7 +20,11 @@ package it.unibz.inf.ontop.owlrefplatform.core.dagjgrapht;
  * #L%
  */
 
-import it.unibz.inf.ontop.ontology.*;
+import it.unibz.inf.ontop.ontology.ClassExpression;
+import it.unibz.inf.ontop.ontology.DataPropertyExpression;
+import it.unibz.inf.ontop.ontology.DataRangeExpression;
+import it.unibz.inf.ontop.ontology.ObjectPropertyExpression;
+
 
 
 /**
@@ -59,17 +63,4 @@ public interface TBoxReasoner {
 	 */
 
 	public EquivalencesDAG<DataRangeExpression> getDataRangeDAG();
-	
-	/**
-	 * 
-	 * @param p: a description
-	 * @return null if p is the representative of its own class **or p is not part of the graph**
-	 *         the representative of the equivalence class otherwise  
-	 */
-
-	public OClass getClassRepresentative(OClass p);
-	
-	public ObjectPropertyExpression getObjectPropertyRepresentative(ObjectPropertyExpression p);
-	
-	public DataPropertyExpression getDataPropertyRepresentative(DataPropertyExpression p);
 }

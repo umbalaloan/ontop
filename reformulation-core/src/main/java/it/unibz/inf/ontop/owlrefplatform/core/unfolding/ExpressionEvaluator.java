@@ -22,15 +22,13 @@ package it.unibz.inf.ontop.owlrefplatform.core.unfolding;
 
 import it.unibz.inf.ontop.model.*;
 import it.unibz.inf.ontop.model.Predicate.COL_TYPE;
+import it.unibz.inf.ontop.model.impl.ImmutabilityTools;
 import it.unibz.inf.ontop.model.impl.OBDADataFactoryImpl;
 import it.unibz.inf.ontop.model.impl.OBDAVocabulary;
 import it.unibz.inf.ontop.owlrefplatform.core.basicoperations.UnifierUtilities;
-import it.unibz.inf.ontop.owlrefplatform.core.basicoperations.UriTemplateMatcher;
+import it.unibz.inf.ontop.model.UriTemplateMatcher;
 
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 
 public class ExpressionEvaluator {
@@ -45,6 +43,44 @@ public class ExpressionEvaluator {
 
 	public ExpressionEvaluator(UriTemplateMatcher matcher) {
 		uriTemplateMatcher = matcher;
+	}
+
+	/**
+	 * No boolean expression (absent) if the evaluation returns false
+	 */
+	public Optional<ImmutableBooleanExpression> evaluateExpression(ImmutableBooleanExpression expression) {
+		BooleanExpression mutableExpression = ImmutabilityTools.convertToMutableBooleanExpression(expression);
+
+		Term evaluatedTerm = evalOperation(mutableExpression);
+
+		/**
+		 * If a function, convert it into an ImmutableBooleanExpression
+		 */
+		if (evaluatedTerm instanceof Function) {
+			Function evaluatedFunctionalTerm = (Function) evaluatedTerm;
+
+			Predicate predicate = evaluatedFunctionalTerm.getFunctionSymbol();
+			if (!(predicate instanceof OperationPredicate)) {
+				throw new RuntimeException("Functional term evaluated that does not have a OperationPredicate: "
+						+ evaluatedFunctionalTerm);
+			}
+
+			return Optional.of(fac.getImmutableBooleanExpression(
+					fac.getBooleanExpression((OperationPredicate) predicate,
+							evaluatedFunctionalTerm.getTerms())));
+		}
+		else if (evaluatedTerm instanceof Constant) {
+			if (evaluatedTerm.equals(OBDAVocabulary.FALSE)) {
+				return Optional.empty();
+			}
+			else {
+				return Optional.of(fac.getImmutableBooleanExpression(ExpressionOperation.AND, (Constant) evaluatedTerm,
+						OBDAVocabulary.TRUE));
+			}
+		}
+		else {
+			throw new RuntimeException("Unexpected term returned after evaluation: " + evaluatedTerm);
+		}
 	}
 	
 	public void evaluateExpressions(DatalogProgram p) {

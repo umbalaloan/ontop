@@ -38,8 +38,6 @@ public interface SQLDialectAdapter {
 	
 	public String SHA1(String str);
 
-	public String strconcat(String[] strings);
-
 	public String uuid();
 	
 	public String strUuid();

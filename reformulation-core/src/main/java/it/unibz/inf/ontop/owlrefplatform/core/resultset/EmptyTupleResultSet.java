@@ -76,9 +76,4 @@ public class EmptyTupleResultSet implements TupleResultSet {
 	public Constant getConstant(String name) {
         throw new NoSuchElementException();
 	}
-
-	@Override
-	public int getCountValue() throws OBDAException {
-		return 0;
-	}
 }
