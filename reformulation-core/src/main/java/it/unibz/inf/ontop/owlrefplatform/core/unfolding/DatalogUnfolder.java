@@ -65,6 +65,7 @@ public class DatalogUnfolder {
 
     private final ImmutableMultimap<Predicate, List<Integer>> primaryKeys;
     private final Map<Predicate, List<CQIE>> mappings;
+    private final Multimap<Predicate,Integer> multiTypedFunctionSymbolIndex;
 
     /***
      * Leaf predicates are those that do not appear in the head of any rule. If
@@ -123,6 +124,7 @@ public class DatalogUnfolder {
         this.primaryKeys = ImmutableMultimap.copyOf(primaryKeys);
         this.mappings = Collections.unmodifiableMap(ruleIndex);
         this.extensionalPredicates = Collections.unmodifiableList(new ArrayList<>(leafPredicates));
+        this.multiTypedFunctionSymbolIndex = processMultipleTemplatePredicates(unfoldingProgram);
     }
 
     public ImmutableList<Predicate> getExtensionalPredicates() {
@@ -215,8 +217,7 @@ public class DatalogUnfolder {
      *          Index of predicates having multiple types
      *
      */
-    public DatalogProgram unfold(DatalogProgram inputquery, String targetPredicate, String strategy, boolean includeMappings,
-                                 Multimap<Predicate,Integer> multiTypedFunctionSymbolIndex) {
+    public DatalogProgram unfold(DatalogProgram inputquery, String targetPredicate, String strategy, boolean includeMappings) {
 
         List<CQIE> workingSet = new LinkedList<CQIE>();
         for (CQIE query : inputquery.getRules())

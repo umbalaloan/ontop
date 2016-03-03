@@ -273,14 +273,6 @@ public class Quest implements Serializable {
 		return inputOBDAModel;
 	}
 
-	/**
-	 * Returns a mutable copy of the index of the multi-typed function symbols.
-	 */
-	public Multimap<Predicate,Integer> copyMultiTypedFunctionSymbolIndex() {
-		return ArrayListMultimap.create(multiTypedFunctionSymbolIndex);
-	}
-
-
 	public void dispose() {
 		try {
 			if (localConnection != null && !localConnection.isClosed())

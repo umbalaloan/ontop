@@ -1,10 +1,7 @@
 package it.unibz.inf.ontop.owlrefplatform.core;
 
 import com.google.common.base.Joiner;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableMultimap;
-import com.google.common.collect.Multimap;
+import com.google.common.collect.*;
 import it.unibz.inf.ontop.model.*;
 import it.unibz.inf.ontop.model.impl.AtomPredicateImpl;
 import it.unibz.inf.ontop.model.impl.OBDADataFactoryImpl;
@@ -21,29 +18,34 @@ import it.unibz.inf.ontop.owlrefplatform.core.mappingprocessing.TMappingExclusio
 import it.unibz.inf.ontop.owlrefplatform.core.mappingprocessing.TMappingProcessor;
 import it.unibz.inf.ontop.owlrefplatform.core.unfolding.DatalogUnfolder;
 import it.unibz.inf.ontop.parser.PreprocessProjection;
-import it.unibz.inf.ontop.sql.DBMetadata;
+import it.unibz.inf.ontop.pivotalrepr.MetadataForQueryOptimization;
+import it.unibz.inf.ontop.pivotalrepr.impl.MetadataForQueryOptimizationImpl;
 import it.unibz.inf.ontop.utils.Mapping2DatalogConverter;
 import it.unibz.inf.ontop.utils.MappingSplitter;
 import it.unibz.inf.ontop.utils.MetaMappingExpander;
+import it.unibz.inf.ontop.sql.DBMetadata;
 import net.sf.jsqlparser.JSQLParserException;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.statement.select.Select;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.URI;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.*;
-import java.util.regex.Pattern;
 
 public class QuestUnfolder {
 
 	/* The active unfolding engine */
 	private DatalogUnfolder unfolder;
 
-	/* As unfolding OBDAModel, but experimental */
-	private List<CQIE> unfoldingProgram;
+	private final DBMetadata metadata;
+	private final MetadataForQueryOptimization metadataForQueryOptimization;
+
+	// Mutable! TODO: replace its usage by metadataForQueryOptimization
+	private final Multimap<Predicate, List<Integer>> pkeys;
+
+	private final CQContainmentCheckUnderLIDs foreignKeyCQC;
 
 	/*
 	 * These are pattern matchers that will help transforming the URI's in
@@ -51,121 +53,80 @@ public class QuestUnfolder {
 	 */
 	private UriTemplateMatcher uriTemplateMatcher = new UriTemplateMatcher();
 
+	protected List<CQIE> ufp; // for TESTS ONLY
+
 	private static final Logger log = LoggerFactory.getLogger(QuestUnfolder.class);
 
 	private static final OBDADataFactory fac = OBDADataFactoryImpl.getInstance();
 
-	/** Davide> Exclude specific predicates from T-Mapping approach **/
-	private final TMappingExclusionConfig excludeFromTMappings;
+	public QuestUnfolder(DBMetadata metadata)  {
 
-	private ImmutableMultimap<AtomPredicate, ImmutableList<Integer>> primaryKeys;
+		this.metadata = metadata;
+		this.pkeys = DBMetadataUtil.extractPKs(metadata);
+		this.metadataForQueryOptimization = new MetadataForQueryOptimizationImpl(convertPrimaryKeys(pkeys));
 
-	/** Davide> Whether to exclude the user-supplied predicates from the
-	 *          TMapping procedure (that is, the mapping assertions for
-	 *          those predicates should not be extended according to the
-	 *          TBox hierarchies
-	 */
-	//private boolean applyExcludeFromTMappings = false;
-	public QuestUnfolder(OBDAModel unfoldingOBDAModel, DBMetadata metadata,  Connection localConnection, URI sourceId) throws Exception{
+		// for eliminating redundancy from the unfolding program
+		LinearInclusionDependencies foreignKeyRules = DBMetadataUtil.generateFKRules(metadata);
+		this.foreignKeyCQC = new CQContainmentCheckUnderLIDs(foreignKeyRules);
+	}
 
-		/** Substitute select * with column names **/
-		preprocessProjection(unfoldingOBDAModel, sourceId, metadata);
+	public void setupInVirtualMode(Collection<OBDAMappingAxiom> mappings,  Connection localConnection, VocabularyValidator vocabularyValidator, TBoxReasoner reformulationReasoner, Ontology inputOntology, TMappingExclusionConfig excludeFromTMappings)
+			throws SQLException, JSQLParserException, OBDAException {
+
+		mappings = vocabularyValidator.replaceEquivalences(mappings);
 
 		/**
-		 * Split the mapping
+		 * Substitute select * with column names  (performs the operation `in place')
 		 */
-		MappingSplitter.splitMappings(unfoldingOBDAModel, sourceId);
+		preprocessProjection(mappings, metadata);
 
 		/**
-		 * Expand the meta mapping
+		 * Split the mapping (creates a new set of mappings)
 		 */
-		MetaMappingExpander metaMappingExpander = new MetaMappingExpander(localConnection);
-		metaMappingExpander.expand(unfoldingOBDAModel, sourceId);
-
-		List<OBDAMappingAxiom> mappings = unfoldingOBDAModel.getMappings(sourceId);
-		unfoldingProgram = Mapping2DatalogConverter.constructDatalogProgram(mappings, metadata);
-
-		this.excludeFromTMappings = TMappingExclusionConfig.empty();
-	}
-
-
-	/**
-	 * The extra parameter <b>excludeFromTMappings</b> defines a list
-	 * of predicates for which the T-Mappings procedure should be
-	 * disabled.
-	 *
-	 * @author Davide
-	 * @param mappings
-	 * @param metadata
-	 * @param analyzer
-	 * @param excludeFromTMappings
-	 */
-	public QuestUnfolder(OBDAModel unfoldingOBDAModel, DBMetadata metadata, Connection localConnection, URI sourceId, TMappingExclusionConfig excludeFromTMappings)  throws Exception{
-		/** Substitute select * with column names **/
-		preprocessProjection(unfoldingOBDAModel, sourceId, metadata);
+		Collection<OBDAMappingAxiom> splittedMappings = MappingSplitter.splitMappings(mappings);
 
 		/**
-		 * Split the mapping
+		 * Expand the meta mapping (creates a new set of mappings)
 		 */
-		MappingSplitter.splitMappings(unfoldingOBDAModel, sourceId);
+		MetaMappingExpander metaMappingExpander = new MetaMappingExpander(localConnection, metadata.getQuotedIDFactory());
+		Collection<OBDAMappingAxiom> expandedMappings = metaMappingExpander.expand(splittedMappings);
 
-		/**
-		 * Expand the meta mapping
-		 */
-		MetaMappingExpander metaMappingExpander = new MetaMappingExpander(localConnection);
-		metaMappingExpander.expand(unfoldingOBDAModel, sourceId);
-
-		List<OBDAMappingAxiom> mappings = unfoldingOBDAModel.getMappings(sourceId);
-		unfoldingProgram = Mapping2DatalogConverter.constructDatalogProgram(mappings, metadata);
-
-		this.excludeFromTMappings = excludeFromTMappings;
-	}
+		List<CQIE> unfoldingProgram = Mapping2DatalogConverter.constructDatalogProgram(expandedMappings, metadata);
 
 
-	public int getRulesSize() {
-		return unfoldingProgram.size();
-	}
+		log.debug("Original mapping size: {}", unfoldingProgram.size());
 
-	@Deprecated
-	public List<CQIE> getRules() {
-		return unfoldingProgram;
-	}
+		// Normalizing language tags and equalities
+		normalizeMappings(unfoldingProgram);
 
+		// Apply TMappings
+		unfoldingProgram = applyTMappings(unfoldingProgram, reformulationReasoner, true, excludeFromTMappings);
 
-	/**
-	 * Only in version 2. TODO: see if still relevant.
-	 */
-	public Multimap<Predicate, Integer> processMultipleTemplatePredicates() {
-		return unfolder.processMultipleTemplatePredicates(unfoldingProgram);
+		// Adding ontology assertions (ABox) as rules (facts, head with no body).
+		addAssertionsAsFacts(unfoldingProgram, inputOntology.getClassAssertions(),
+				inputOntology.getObjectPropertyAssertions(), inputOntology.getDataPropertyAssertions());
 
-	}
+		// Adding data typing on the mapping axioms.
+		// Adding NOT NULL conditions to the variables used in the head
+		// of all mappings to preserve SQL-RDF semantics
+		extendTypesWithMetadataAndAddNOTNULL(unfoldingProgram, reformulationReasoner, vocabularyValidator);
 
-
-	/**
-	 * Setting up the unfolder and SQL generation
-	 */
-
-	public void setupUnfolder(DBMetadata metadata) {
 
 		// Collecting URI templates
-		uriTemplateMatcher = createURITemplateMatcher(unfoldingProgram);
+		uriTemplateMatcher = UriTemplateMatcher.create(unfoldingProgram);
 
 		// Adding "triple(x,y,z)" mappings for support of unbounded
 		// predicates and variables as class names (implemented in the
 		// sparql translator)
 		unfoldingProgram.addAll(generateTripleMappings(unfoldingProgram));
 
-		Multimap<Predicate, List<Integer>> pkeys = DBMetadata.extractPKs(metadata, unfoldingProgram);
-
 		log.debug("Final set of mappings: \n {}", Joiner.on("\n").join(unfoldingProgram));
-//		for(CQIE rule : unfoldingProgram){
-//			log.debug("{}", rule);
-//		}
 
 		unfolder = new DatalogUnfolder(unfoldingProgram, pkeys);
 
-		primaryKeys = convertPrimaryKeys(pkeys);
+		this.ufp = unfoldingProgram;
 	}
+
 
 	private static ImmutableMultimap<AtomPredicate, ImmutableList<Integer>> convertPrimaryKeys(
 			Multimap<Predicate, List<Integer>> pkeys) {
@@ -192,21 +153,40 @@ public class QuestUnfolder {
 		return multimapBuilder.build();
 	}
 
-	public void applyTMappings(TBoxReasoner reformulationReasoner, boolean full, DBMetadata metadata,
-							   TMappingExclusionConfig excludeFromTMappings) throws OBDAException  {
+
+	/**
+	 * Setting up the unfolder and SQL generation
+	 */
+
+	public void setupInSemanticIndexMode(Collection<OBDAMappingAxiom> mappings, TBoxReasoner reformulationReasoner) throws OBDAException {
+
+		List<CQIE> unfoldingProgram = Mapping2DatalogConverter.constructDatalogProgram(mappings, metadata);
+
+		// this call is required to complete the T-mappings by rules taking account of
+		// existential quantifiers and inverse roles
+		unfoldingProgram = applyTMappings(unfoldingProgram, reformulationReasoner, false, TMappingExclusionConfig.empty());
+
+		// Collecting URI templates
+		uriTemplateMatcher = UriTemplateMatcher.create(unfoldingProgram);
+
+		// Adding "triple(x,y,z)" mappings for support of unbounded
+		// predicates and variables as class names (implemented in the
+		// sparql translator)
+		unfoldingProgram.addAll(generateTripleMappings(unfoldingProgram));
+
+		log.debug("Final set of mappings: \n {}", Joiner.on("\n").join(unfoldingProgram));
+
+		unfolder = new DatalogUnfolder(unfoldingProgram, pkeys);
+
+		this.ufp = unfoldingProgram;
+	}
+
+
+	private List<CQIE> applyTMappings(List<CQIE>  unfoldingProgram, TBoxReasoner reformulationReasoner, boolean full, TMappingExclusionConfig excludeFromTMappings) throws OBDAException  {
 
 		final long startTime = System.currentTimeMillis();
 
-		// for eliminating redundancy from the unfolding program
-		LinearInclusionDependencies foreignKeyRules = DBMetadataUtil.generateFKRules(metadata);
-		CQContainmentCheckUnderLIDs foreignKeyCQC = new CQContainmentCheckUnderLIDs(foreignKeyRules);
-		// Davide> Here now I put another TMappingProcessor taking
-		//         also a list of Predicates as input, that represents
-		//         what needs to be excluded from the T-Mappings
-		//if( applyExcludeFromTMappings )
 		unfoldingProgram = TMappingProcessor.getTMappings(unfoldingProgram, reformulationReasoner, full,  foreignKeyCQC, excludeFromTMappings);
-		//else
-		//	unfoldingProgram = TMappingProcessor.getTMappings(unfoldingProgram, reformulationReasoner, full);
 
 		// Eliminating redundancy from the unfolding program
 		// TODO: move the foreign-key optimisation inside t-mapping generation
@@ -223,90 +203,75 @@ public class QuestUnfolder {
 		final long endTime = System.currentTimeMillis();
 		log.debug("TMapping size: {}", unfoldingProgram.size());
 		log.debug("TMapping processing time: {} ms", (endTime - startTime));
+
+		return unfoldingProgram;
 	}
 
 	/***
 	 * Adding data typing on the mapping axioms.
-	 */
-
-	public void extendTypesWithMetadata(TBoxReasoner tBoxReasoner, DBMetadata metadata) throws OBDAException {
-
-		MappingDataTypeRepair typeRepair = new MappingDataTypeRepair(metadata);
-		typeRepair.insertDataTyping(unfoldingProgram, tBoxReasoner);
-	}
-
-	/***
 	 * Adding NOT NULL conditions to the variables used in the head
 	 * of all mappings to preserve SQL-RDF semantics
 	 */
 
-	public void addNOTNULLToMappings() {
+	private void extendTypesWithMetadataAndAddNOTNULL(List<CQIE> unfoldingProgram, TBoxReasoner tboxReasoner, VocabularyValidator qvv) throws OBDAException {
+		MappingDataTypeRepair typeRepair = new MappingDataTypeRepair(metadata, tboxReasoner, qvv);
+		for (CQIE mapping : unfoldingProgram)  {
+			typeRepair.insertDataTyping(mapping);
 
-		for (CQIE mapping : unfoldingProgram) {
 			Set<Variable> headvars = new HashSet<>();
 			TermUtils.addReferencedVariablesTo(headvars, mapping.getHead());
 			for (Variable var : headvars) {
 				Function notnull = fac.getFunctionIsNotNull(var);
 				List<Function> body = mapping.getBody();
-				if (!body.contains(notnull)) {
+				if (!body.contains(notnull))
 					body.add(notnull);
-				}
 			}
 		}
 	}
 
 	/**
-	 * Normalizing language tags. Making all LOWER CASE
+	 * Normalize language tags (make them lower-case) and equalities
+	 * (remove them by replacing all equivalent terms with one representative)
 	 */
 
-	public void normalizeLanguageTagsinMappings() {
+	private void normalizeMappings(List<CQIE> unfoldingProgram) {
+
+		// Normalizing language tags. Making all LOWER CASE
+
 		for (CQIE mapping : unfoldingProgram) {
 			Function head = mapping.getHead();
 			for (Term term : head.getTerms()) {
-				if (!(term instanceof Function)) {
+				if (!(term instanceof Function))
 					continue;
-				}
+
 				Function typedTerm = (Function) term;
-				Predicate type = typedTerm.getFunctionSymbol();
-
-				if (typedTerm.getTerms().size() != 2 || !type.getName().toString().equals(OBDAVocabulary.RDFS_LITERAL_URI))
-					continue;
-				/*
-				 * changing the language, its always the second inner term
-				 * (literal,lang)
-				 */
-				Term originalLangTag = typedTerm.getTerm(1);
-				Term normalizedLangTag = null;
-
-				if (originalLangTag instanceof Constant) {
-					ValueConstant originalLangConstant = (ValueConstant) originalLangTag;
-					normalizedLangTag = fac.getConstantLiteral(originalLangConstant.getValue().toLowerCase(), originalLangConstant.getType());
-				} else {
-					normalizedLangTag = originalLangTag;
+				if (typedTerm.getTerms().size() == 2 && typedTerm.getFunctionSymbol().getName().equals(OBDAVocabulary.RDFS_LITERAL_URI)) {
+					// changing the language, its always the second inner term (literal,lang)
+					Term originalLangTag = typedTerm.getTerm(1);
+					if (originalLangTag instanceof ValueConstant) {
+						ValueConstant originalLangConstant = (ValueConstant) originalLangTag;
+						Term normalizedLangTag = fac.getConstantLiteral(originalLangConstant.getValue().toLowerCase(),
+								originalLangConstant.getType());
+						typedTerm.setTerm(1, normalizedLangTag);
+					}
 				}
-				typedTerm.setTerm(1, normalizedLangTag);
 			}
 		}
-	}
 
-	/**
-	 * Normalizing equalities
-	 */
-
-	public void normalizeEqualities() {
+		// Normalizing equalities
 
 		for (CQIE cq: unfoldingProgram)
 			EQNormalizer.enforceEqualities(cq);
-
 	}
 
 	/***
 	 * Adding ontology assertions (ABox) as rules (facts, head with no body).
 	 */
-	public void addClassAssertionsAsFacts(Iterable<ClassAssertion> assertions) {
+	private void addAssertionsAsFacts(List<CQIE> unfoldingProgram, Iterable<ClassAssertion> cas,
+									  Iterable<ObjectPropertyAssertion> pas, Iterable<DataPropertyAssertion> das) {
 
 		int count = 0;
-		for (ClassAssertion ca : assertions) {
+		for (ClassAssertion ca : cas) {
 			// no blank nodes are supported here
 			URIConstant c = (URIConstant)ca.getIndividual();
 			Predicate p = ca.getConcept().getPredicate();
@@ -318,12 +283,9 @@ public class QuestUnfolder {
 			count++;
 		}
 		log.debug("Appended {} class assertions from ontology as fact rules", count);
-	}
 
-	public void addObjectPropertyAssertionsAsFacts(Iterable<ObjectPropertyAssertion> assertions) {
-
-		int count = 0;
-		for (ObjectPropertyAssertion pa : assertions) {
+		count = 0;
+		for (ObjectPropertyAssertion pa : pas) {
 			// no blank nodes are supported here
 			URIConstant s = (URIConstant)pa.getSubject();
 			URIConstant o = (URIConstant)pa.getObject();
@@ -337,9 +299,7 @@ public class QuestUnfolder {
 			count++;
 		}
 		log.debug("Appended {} object property assertions as fact rules", count);
-	}
 
-	public void addDataPropertyAssertionsAsFacts(Iterable<DataPropertyAssertion> assertions) {
 
 //		int count = 0;
 //		for (DataPropertyAssertion a : assertions) {
@@ -361,74 +321,8 @@ public class QuestUnfolder {
 
 
 
-	private static UriTemplateMatcher createURITemplateMatcher(List<CQIE> unfoldingProgram) {
-
-		HashSet<String> templateStrings = new HashSet<String>();
-		ImmutableMap.Builder<Pattern, Function> matcherBuilder = ImmutableMap.builder();
-
-		for (CQIE mapping : unfoldingProgram) {
-
-			Function head = mapping.getHead();
-
-			// Collecting URI templates and making pattern matchers for them.
-			for (Term term : head.getTerms()) {
-				if (!(term instanceof Function)) {
-					continue;
-				}
-				Function fun = (Function) term;
-				if (!(fun.getFunctionSymbol() instanceof URITemplatePredicate)) {
-					continue;
-				}
-				/*
-				 * This is a URI function, so it can generate pattern matchers
-				 * for the URIS. We have two cases, one where the arity is 1,
-				 * and there is a constant/variable. <p> The second case is
-				 * where the first element is a string template of the URI, and
-				 * the rest of the terms are variables/constants
-				 */
-				if (fun.getTerms().size() == 1) {
-					/*
-					 * URI without template, we get it directly from the column
-					 * of the table, and the function is only f(x)
-					 */
-					if (templateStrings.contains("(.+)")) {
-						continue;
-					}
-					Function templateFunction = fac.getUriTemplate(fac.getVariable("x"));
-					Pattern matcher = Pattern.compile("(.+)");
-					matcherBuilder.put(matcher, templateFunction);
-					templateStrings.add("(.+)");
-				}
-				else {
-					ValueConstant template = (ValueConstant) fun.getTerms().get(0);
-					String templateString = template.getValue();
-					templateString = templateString.replace("{}", "(.+)");
-
-					if (templateStrings.contains(templateString)) {
-						continue;
-					}
-					Pattern matcher = Pattern.compile(templateString);
-					matcherBuilder.put(matcher, fun);
-					templateStrings.add(templateString);
-				}
-			}
-		}
-		return new UriTemplateMatcher(matcherBuilder.build());
-	}
 
 
-	public void updateSemanticIndexMappings(List<OBDAMappingAxiom> mappings, TBoxReasoner reformulationReasoner, DBMetadata metadata) throws OBDAException {
-
-		unfoldingProgram = Mapping2DatalogConverter.constructDatalogProgram(mappings, metadata);
-
-		// this call is required to complete the T-mappings by rules taking account of
-		// existential quantifiers and inverse roles
-		applyTMappings(reformulationReasoner, false, metadata, TMappingExclusionConfig.empty());
-
-		setupUnfolder(metadata);
-
-		log.debug("Mappings and unfolder have been updated after inserts to the semantic index DB");
-	}
 
 
 	/***
@@ -444,25 +338,16 @@ public class QuestUnfolder {
 			Function newhead = null;
 			Function currenthead = mapping.getHead();
 			if (currenthead.getArity() == 1) {
-				/*
-				 * head is Class(x) Forming head as triple(x,uri(rdf:type),
-				 * uri(Class))
-				 */
+				// head is Class(x) Forming head as triple(x, uri(rdf:type), uri(Class))
 				Function rdfTypeConstant = fac.getUriTemplate(fac.getConstantLiteral(OBDAVocabulary.RDF_TYPE));
-
 				String classname = currenthead.getFunctionSymbol().getName();
 				Term classConstant = fac.getUriTemplate(fac.getConstantLiteral(classname));
-
 				newhead = fac.getTripleAtom(currenthead.getTerm(0), rdfTypeConstant, classConstant);
 			}
 			else if (currenthead.getArity() == 2) {
-				/*
-				 * head is Property(x,y) Forming head as triple(x,uri(Property),
-				 * y)
-				 */
+				//head is Property(x,y) Forming head as triple(x, uri(Property), y)
 				String propname = currenthead.getFunctionSymbol().getName();
 				Function propConstant = fac.getUriTemplate(fac.getConstantLiteral(propname));
-
 				newhead = fac.getTripleAtom(currenthead.getTerm(0), propConstant, currenthead.getTerm(1));
 			}
 			CQIE newmapping = fac.getCQIE(newhead, mapping.getBody());
@@ -480,43 +365,38 @@ public class QuestUnfolder {
 	 *
 	 * @throws java.sql.SQLException
 	 */
-	private void preprocessProjection(OBDAModel unfoldingOBDAModel, URI sourceId, DBMetadata metadata) throws SQLException {
-
-		List<OBDAMappingAxiom> mappings = unfoldingOBDAModel.getMappings(sourceId);
-
+	private static void preprocessProjection(Collection<OBDAMappingAxiom> mappings, DBMetadata metadata) throws SQLException {
 
 		for (OBDAMappingAxiom axiom : mappings) {
-			String sourceString = axiom.getSourceQuery().toString();
-
-			// TODO: refactor
-			OBDAQuery targetQuery= axiom.getTargetQuery();
-
-			Select select = null;
 			try {
-				select = (Select) CCJSqlParserUtil.parse(sourceString);
+				String sourceString = axiom.getSourceQuery().toString();
 
-				Set<Variable> variables = ((CQIE) targetQuery).getReferencedVariables();
+				Select select = (Select) CCJSqlParserUtil.parse(sourceString);
+
+				List<Function> targetQuery = axiom.getTargetQuery();
+				Set<Variable> variables = new HashSet<>();
+				for (Function atom : targetQuery)
+					TermUtils.addReferencedVariablesTo(variables, atom);
+
 				PreprocessProjection ps = new PreprocessProjection(metadata);
 				String query = ps.getMappingQuery(select, variables);
 				axiom.setSourceQuery(fac.getSQLQuery(query));
-
-			} catch (JSQLParserException e) {
-				log.debug("SQL Query cannot be preprocessed by the parser");
-
-
 			}
-//
+			catch (JSQLParserException e) {
+				log.debug("SQL Query cannot be preprocessed by the parser");
+			}
 		}
 	}
 
-
-
-
-	public DatalogUnfolder getDatalogUnfolder(){
-		return unfolder;
+	public DatalogProgram unfold(DatalogProgram programAfterRewriting) {
+		return unfolder.unfold(programAfterRewriting, "ans1",QuestConstants.BUP, true);
 	}
 
-	public ImmutableMultimap<AtomPredicate, ImmutableList<Integer>> getPrimaryKeys() {
-		return primaryKeys;
+	public MetadataForQueryOptimization getMetadataForQueryOptimization() {
+		return metadataForQueryOptimization;
+	}
+
+	public ImmutableList<Predicate> getExtensionalPredicates() {
+		return unfolder.getExtensionalPredicates();
 	}
 }
